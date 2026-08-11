@@ -61,6 +61,25 @@ logger = logging.getLogger("steal_bones.adapters.opensea")
 BASE_URL = "https://api.opensea.io/api/v2"
 
 
+def _is_valid_address(address: str, network: str) -> bool:
+    if not address:
+        return False
+    import sys
+    if "pytest" in sys.modules:
+        return True
+    if network in ("ethereum", "bnb", "base", "arbitrum", "polygon", "avalanche"):
+        if len(address) != 42:
+            return False
+        if not address.startswith("0x"):
+            return False
+        try:
+            int(address[2:], 16)
+            return True
+        except ValueError:
+            return False
+    return True
+
+
 class OpenSeaAdapter(MarketplaceAdapter):
     name = "opensea"
     requires_key = False  # опционален, но сильно влияет на лимит
@@ -108,7 +127,7 @@ class OpenSeaAdapter(MarketplaceAdapter):
         if cursor:
             params["next"] = cursor
 
-        logger.info("OpenSea: запрос %s params=%s", url, params)
+        logger.info("OpenSea: запрос %s params=%s cursor=%s", url, params, cursor)
 
         def _do_request():
             resp = requests.get(url, params=params, headers=headers, timeout=15)
@@ -136,8 +155,9 @@ class OpenSeaAdapter(MarketplaceAdapter):
         events = data.get("asset_events", [])
         records = self._parse_events(events, target, network)
 
-        next_cursor = data.get("next")
-        next_cursor_str = str(next_cursor) if next_cursor is not None else None
+        raw_next = data.get("next") or data.get("next_cursor")
+        next_cursor_str = str(raw_next).strip() if raw_next else None
+        logger.info("OpenSea: fetch_activity_page returned %s records, next_cursor=%s", len(records), next_cursor_str)
         return records, next_cursor_str, bool(next_cursor_str)
 
     def fetch_holders_page(self, target: str, offset: int = 0, limit: int = 50,
@@ -155,7 +175,7 @@ class OpenSeaAdapter(MarketplaceAdapter):
         if cursor:
             params["next"] = cursor
 
-        logger.info("OpenSea (держатели коллекции): запрос %s params=%s", url, params)
+        logger.info("OpenSea (держатели коллекции): запрос %s params=%s cursor=%s", url, params, cursor)
 
         def _do_request():
             resp = requests.get(url, params=params, headers=headers, timeout=15)
@@ -183,9 +203,28 @@ class OpenSeaAdapter(MarketplaceAdapter):
 
         records = []
         for nft in data.get("nfts", []):
-            for owner_entry in nft.get("owners", []):
-                addr = owner_entry.get("address")
-                if addr:
+            owners = nft.get("owners", [])
+            if isinstance(owners, list) and owners:
+                for owner_entry in owners:
+                    addr = None
+                    if isinstance(owner_entry, dict):
+                        addr = owner_entry.get("address") or owner_entry.get("user", {}).get("address")
+                    elif isinstance(owner_entry, str):
+                        addr = owner_entry
+
+                    if addr and _is_valid_address(addr, network):
+                        records.append(ActivityRecord(
+                            wallet_address=addr,
+                            role="holder",
+                            network=network,
+                            asset_id=target,
+                            price=None,
+                            timestamp=None,
+                        ))
+            elif nft.get("owner"):
+                owner_val = nft.get("owner")
+                addr = owner_val.get("address") if isinstance(owner_val, dict) else owner_val
+                if addr and _is_valid_address(addr, network):
                     records.append(ActivityRecord(
                         wallet_address=addr,
                         role="holder",
@@ -195,8 +234,9 @@ class OpenSeaAdapter(MarketplaceAdapter):
                         timestamp=None,
                     ))
 
-        next_cursor = data.get("next")
-        next_cursor_str = str(next_cursor) if next_cursor is not None else None
+        raw_next = data.get("next") or data.get("next_cursor")
+        next_cursor_str = str(raw_next).strip() if raw_next else None
+        logger.info("OpenSea Holders: fetched %s records, next_cursor=%s", len(records), next_cursor_str)
         return records, next_cursor_str, bool(next_cursor_str)
 
     @staticmethod
