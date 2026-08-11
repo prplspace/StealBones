@@ -132,7 +132,6 @@ def _store_unique_wallets_batch(
             continue
 
         if len(seen_addresses) >= result.target_wallets:
-            result.stopped_early_at_target = True
             break
 
         key = (address, network)
@@ -149,7 +148,6 @@ def _store_unique_wallets_batch(
             result.wallets_stored += 1
 
             if len(seen_addresses) >= result.target_wallets:
-                result.stopped_early_at_target = True
                 break
 
 
@@ -187,7 +185,6 @@ def _run_deep_search(
                 result.warnings.append(f"Helius DAS error: {exc}")
 
     if len(seen_addresses) >= target_wallets:
-        result.stopped_early_at_target = True
         return
 
     # EVM / OpenSea Holders Scan:
@@ -231,7 +228,6 @@ def _run_deep_search(
             progress.update(raw_records=result.total_activity_records, unique_wallets=result.unique_wallets_seen)
 
             if len(seen_addresses) >= target_wallets:
-                result.stopped_early_at_target = True
                 return
 
             if not has_more:
@@ -240,7 +236,6 @@ def _run_deep_search(
             offset += 1
 
     if len(seen_addresses) >= target_wallets:
-        result.stopped_early_at_target = True
         return
 
     # PHASE 2 (ACTIVE LISTINGS - SECOND PRIORITY):
@@ -281,7 +276,6 @@ def _run_deep_search(
             progress.update(raw_records=result.total_activity_records, unique_wallets=result.unique_wallets_seen)
 
             if len(seen_addresses) >= target_wallets:
-                result.stopped_early_at_target = True
                 return
 
             if not has_more:
@@ -289,7 +283,6 @@ def _run_deep_search(
             offset += limit
 
     if len(seen_addresses) >= target_wallets:
-        result.stopped_early_at_target = True
         return
 
     # PHASE 3 (ACTIVITY FEED - THIRD PRIORITY):
@@ -336,7 +329,6 @@ def _run_deep_search(
             progress.update(raw_records=result.total_activity_records, unique_wallets=result.unique_wallets_seen)
 
             if len(seen_addresses) >= target_wallets:
-                result.stopped_early_at_target = True
                 return
 
             if not has_more:
@@ -385,7 +377,6 @@ def _run_deep_search(
             progress.update(raw_records=result.total_activity_records, unique_wallets=result.unique_wallets_seen)
 
             if len(seen_addresses) >= target_wallets:
-                result.stopped_early_at_target = True
                 return
 
             if not has_more:
@@ -476,6 +467,7 @@ def run_job(platform: str, asset_type: str, network: str, target: str | list[str
     try:
         for i, one_target in enumerate(targets):
             if len(seen_addresses) >= target_wallets:
+                result.stopped_early_at_target = True
                 break
             if is_batch:
                 progress.update(stage=f"Коллекция {i + 1}/{len(targets)}: «{one_target}»…")
@@ -484,6 +476,9 @@ def run_job(platform: str, asset_type: str, network: str, target: str | list[str
             else:
                 _run_single_shot(marketplace, platform, asset_type, network, one_target, target_wallets, result, seen_addresses)
             result.targets_completed += 1
+            if len(seen_addresses) >= target_wallets:
+                result.stopped_early_at_target = True
+                break
     except Exception as exc:
         logger.exception("Неожиданная ошибка в run_job")
         result.warnings.append(f"Неожиданная ошибка: {exc}")

@@ -246,7 +246,8 @@ class MagicEdenAdapter(MarketplaceAdapter):
                              network: str = "solana") -> tuple[list[ActivityRecord], bool]:
         if asset_type != "nft":
             raise AdapterError("Magic Eden — NFT-площадка, для мемкоинов используйте dexscreener/birdeye")
-        if offset > MAX_OFFSET:
+        if offset >= MAX_OFFSET:
+            logger.warning("Magic Eden history depth limit (15000) reached")
             return [], False
 
         url = f"{BASE_URL}/collections/{target}/activities"

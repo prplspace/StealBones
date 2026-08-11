@@ -701,11 +701,17 @@ class SolanaBalanceAdapter(BalanceAdapter):
                 if rotator.has_other_key(key):
                     rotator.mark_rate_limited(key)
                     continue
+                if page_number > 1:
+                    logger.warning("Helius RPC rate limit on page %s (%s). Returning accumulated wallets.", page_number, exc)
+                    break
                 else:
                     raise
             except requests.RequestException as exc:
-                logger.warning("Helius RPC request failed on page %s (%s). Returning accumulated wallets.", page_number, exc)
-                break
+                if page_number > 1:
+                    logger.warning("Helius RPC request failed on page %s (%s). Returning accumulated wallets.", page_number, exc)
+                    break
+                else:
+                    raise exc
 
             rotator.record_request(key)
 
